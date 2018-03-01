@@ -203,6 +203,11 @@
         if (fontUrl.indexOf('.' + extension) > 0) {
           return supportedFormats[extension];
         }
+
+        // Hardcode support for Adobe Typekit fonts
+        if (fontUrl.match(/^https:\/\/use.typekit.net\//)) {
+          return supportedFormats.ttf;
+        }
       }
 
       // If you see this error message, you probably need to update code above.
