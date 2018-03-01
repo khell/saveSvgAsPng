@@ -405,19 +405,7 @@
     var elList = el.length ? el : [el];
     var yPos = 0;
 
-    var convertToPng = function(src, w, h) {
-      canvas.width = w;
-      canvas.height = h;
-
-      var pixelRatio = window.devicePixelRatio || 1;
-
-      canvas.style.width = canvas.width +'px';
-      canvas.style.height = canvas.height +'px';
-      canvas.width *= pixelRatio;
-      canvas.height *= pixelRatio;
-
-      context.setTransform(pixelRatio,0,0,pixelRatio,0,0);
-      
+    var convertToPng = function(src) {
       if(options.canvg) {
         options.canvg(canvas, src);
       } else {
@@ -493,7 +481,7 @@
             const headerHeight = 80;
             canvas.height += headerHeight;
             yPos = headerHeight;
-            context.font = "25px Open Sans";
+            context.font = "25px aktiv-grotesk";
             context.textBaseline = 'top';
             context.fillText(options.headerText, 20, 20);
           }
