@@ -228,7 +228,12 @@
         oReq.addEventListener('abort', transferFailed);
         oReq.open('GET', font.url);
         oReq.responseType = 'arraybuffer';
-        oReq.send();
+
+        try {
+          oReq.send();
+        } catch (e) {
+          transferFailed();
+        }
 
         function fontLoaded() {
           // TODO: it may be also worth to wait until fonts are fully loaded before
@@ -240,7 +245,9 @@
 
         function transferFailed(e) {
           console.warn('Failed to load font from: ' + font.url);
-          console.warn(e)
+          if(e) {
+            console.warn(e)
+          }
           css += font.text + '\n';
           processFontQueue(queue);
         }
@@ -254,7 +261,6 @@
             processFontQueue(queue)
           }, 0);
         }
-
       }
     }
 
