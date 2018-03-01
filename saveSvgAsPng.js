@@ -17,6 +17,31 @@
     return url && url.lastIndexOf('http',0) == 0 && url.lastIndexOf(window.location.host) == -1;
   }
 
+  function traverseSheet(sheet) {
+    var result = [sheet];
+
+    if (sheet.rules) {
+      for (var i = 0; i < sheet.rules.length; i++) {
+        var rule = sheet.rules[i];
+        if (rule.type === 3) {
+          result = result.concat(traverseSheet(rule.styleSheet));
+        }
+      }
+    }
+
+    return result;
+  }
+
+  function traverseSheets(sheets) {
+    var result = [];
+
+    for (var i = 0; i < sheets.length; i++) {
+      result = result.concat(traverseSheet(sheets[i]));
+    }
+
+    return result;
+  }
+
   function inlineImages(el, callback) {
     requireDomNode(el);
 
@@ -74,11 +99,12 @@
     // asynchronously
     var fontsQueue = [];
     var sheets = document.styleSheets;
-    for (var i = 0; i < sheets.length; i++) {
+    var nestedSheets = traverseSheets(sheets);
+    for (var i = 0; i < nestedSheets.length; i++) {
       try {
-        var rules = sheets[i].cssRules;
+        var rules = nestedSheets[i].cssRules;
       } catch (e) {
-        console.warn("Stylesheet could not be loaded: "+sheets[i].href);
+        console.warn("Stylesheet could not be loaded: "+nestedSheets[i].href);
         continue;
       }
 
@@ -359,15 +385,16 @@
   }
 
   out$.svgAsPngUri = function(el, options, cb) {
-    requireDomNode(el);
-
     options = options || {};
     options.encoderType = options.encoderType || 'image/png';
     options.encoderOptions = options.encoderOptions || 0.8;
 
+    var canvas = document.createElement('canvas');
+    var context = canvas.getContext('2d');
+    var elList = el.length ? el : [el];
+    var yPos = 0;
+
     var convertToPng = function(src, w, h) {
-      var canvas = document.createElement('canvas');
-      var context = canvas.getContext('2d');
       canvas.width = w;
       canvas.height = h;
 
@@ -383,18 +410,17 @@
       if(options.canvg) {
         options.canvg(canvas, src);
       } else {
-        context.drawImage(src, 0, 0);
+        context.drawImage(src, 0, yPos);
       }
 
-      if(options.backgroundColor){
-        context.globalCompositeOperation = 'destination-over';
-        context.fillStyle = options.backgroundColor;
-        context.fillRect(0, 0, canvas.width, canvas.height);
-      }
+      yPos += src.height;
 
-      var png;
+    };
+
+    var extractCanvasData = function() {
+      var pngContentUrl;
       try {
-        png = canvas.toDataURL(options.encoderType, options.encoderOptions);
+        pngContentUrl = canvas.toDataURL(options.encoderType, options.encoderOptions);
       } catch (e) {
         if ((typeof SecurityError !== 'undefined' && e instanceof SecurityError) || e.name == "SecurityError") {
           console.error("Rendered SVG images cannot be downloaded in this browser.");
@@ -403,29 +429,77 @@
           throw e;
         }
       }
-      cb(png);
-    }
+      
+      // should be called once
+      cb(pngContentUrl);
+    };
 
     if(options.canvg) {
       out$.prepareSvg(el, options, convertToPng);
     } else {
-      out$.svgAsDataUri(el, options, function(uri) {
-        var image = new Image();
+      const imagePromises = elList.map(function(elem) {
+        requireDomNode(elem);
 
-        image.onload = function() {
-          convertToPng(image, image.width, image.height);
-        }
+        return new Promise(function(resolve, reject) {
+          out$.svgAsDataUri(elem, options, function(uri) {
+            var image = new Image();
 
-        image.onerror = function() {
-          console.error(
-            'There was an error loading the data URI as an image on the following SVG\n',
-            window.atob(uri.slice(26)), '\n',
-            "Open the following link to see browser's diagnosis\n",
-            uri);
-        }
+            image.onload = function() {
+              resolve(image);
+            };
 
-        image.src = uri;
+            image.onerror = function() {
+              resolve();
+              //console.warn('There was an error loading the data URI as an image on the following SVG: ' + window.atob(uri.slice(26)));
+            };
+
+            image.src = uri;
+          });
+        });
       });
+
+      Promise.all(imagePromises).then(function(images) {
+          return images.filter(function(image) {
+            return !!image;
+          });
+        }).then(function(images) {
+          const dimensions = images.filter(function(image) {
+            return !!image;
+          }).reduce(function(prev, curr) {
+            return {
+              width: Math.max(prev.width, curr.width),
+              height: prev.height + curr.height
+            };
+          }, {
+            width: 0,
+            height: 20
+          });
+
+          canvas.height = dimensions.height;
+          canvas.width = dimensions.width;
+
+          if (options.headerText) {
+            const headerHeight = 80;
+            canvas.height += headerHeight;
+            yPos = headerHeight;
+            context.font = "25px Open Sans";
+            context.textBaseline = 'top';
+            context.fillText(options.headerText, 20, 20);
+          }
+
+          images.forEach(convertToPng);
+
+          if (options.backgroundColor) {
+            context.globalCompositeOperation = 'destination-over';
+            context.fillStyle = options.backgroundColor;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+          }
+
+          extractCanvasData();
+        })
+        .catch(function(e) {
+          console.error(e);
+        });
     }
   }
 
@@ -482,19 +556,19 @@
   }
 
   out$.saveSvgAsPng = function(el, name, options) {
-    requireDomNode(el);
-
     options = options || {};
-    out$.svgAsPngUri(el, options, function(uri) {
-      out$.download(name, uri);
+    return new Promise(function(resolve) {
+      out$.svgAsPngUri(el, options, function(uri) {
+        out$.download(name, uri);
+        resolve();
+      });
     });
   }
 
   // if define is defined create as an AMD module
-  if (typeof define !== 'undefined') {
-    define(function() {
+  if (typeof define === "function" && define.amd) {
+    define("saveSvgAsPng", [], function() {
       return out$;
     });
   }
-
 })();
