@@ -20,7 +20,7 @@
   function traverseSheet(sheet) {
     var result = [sheet];
 
-    if (sheet.rules) {
+    if (sheet.hasOwnProperty('rules')) {
       for (var i = 0; i < sheet.rules.length; i++) {
         var rule = sheet.rules[i];
         if (rule.type === 3) {
